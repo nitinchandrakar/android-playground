@@ -1,5 +1,12 @@
 package com.example.myshoppinglistapp
 
+import android.Manifest
+import android.content.Context
+import android.widget.Button
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +27,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,18 +44,68 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.navigation.NavController
 
 data class ShoppingItem(val id: Int,
                         var name: String,
                         var quantity: Int,
-                        var isEditing: Boolean = false)
+                        var isEditing: Boolean = false,
+                        var address: String = ""
+    )
 
 @Composable
-fun ShoppingListApp(){
+fun ShoppingListApp(
+    locationUtils: LocationUtils,
+    viewModel: LocationViewModel,
+    navController: NavController,
+    context: Context,
+    address: String
+){
     var sItems by remember{ mutableStateOf(listOf<ShoppingItem>()) }
     var showDialog by remember { mutableStateOf(false) }
     var itemName by remember { mutableStateOf("") }
     var itemQuality by remember { mutableStateOf("") }
+
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+        onResult = {
+            // Handle permission result
+                permissions ->
+            if(permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] == true
+                && permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] == true){
+                // Permission granted, update the location
+
+                locationUtils.requestLocationUpdates(viewModel = viewModel)
+            }else{
+                // Permission denied, handle accordingly
+                val rationaleRequired = ActivityCompat.shouldShowRequestPermissionRationale(
+                    context as ComponentActivity,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                ) || ActivityCompat.shouldShowRequestPermissionRationale(
+                    context as ComponentActivity,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+
+                if(!rationaleRequired){
+                    // Explain why the app needs the permission
+                    Toast.makeText(
+                        context,
+                        "Location permission is required to display location",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } else{
+                    // Permission denied, handle accordingly
+                    Toast.makeText(
+                        context,
+                        "Location permission is required to display location, " +
+                                "Please enable from settings",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    )
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -81,6 +139,7 @@ fun ShoppingListApp(){
                                 editedItem?.let {
                                     it.name = editedName
                                     it.quantity = editedQuantity
+                                    it.address = address
                                 }
                             })
                         }else{
@@ -109,7 +168,8 @@ fun ShoppingListApp(){
                             val newItem = ShoppingItem(
                                 id = sItems.size + 1,
                                 name = itemName,
-                                quantity = itemQuality.toInt()
+                                quantity = itemQuality.toInt(),
+                                address = address
                             )
 
                             sItems = sItems + newItem
@@ -150,6 +210,24 @@ fun ShoppingListApp(){
                             .fillMaxWidth()
                             .padding(8.dp)
                     )
+
+                    Button(
+                        onClick = {
+                            if(locationUtils.hasLocationPermission(context)){
+                                locationUtils.requestLocationUpdates(viewModel)
+                                navController.navigate("locationscreen"){
+                                    this.launchSingleTop
+                                }
+                            }else{
+                                requestPermissionLauncher.launch(arrayOf(
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                                ))
+                            }
+                        }
+                    ){
+                        Text(text = "Address")
+                    }
                 }
             }
         )
@@ -206,6 +284,20 @@ fun ShoppingItem(item: ShoppingItem,
             ),
             horizontalArrangement = Arrangement.SpaceBetween
     ){
+        Column(
+            modifier = Modifier.weight(1f).padding(8.dp)
+        ){
+            Row {
+                Text(text = item.name, modifier = Modifier.padding(8.dp))
+                Text(text = "Qt: ${item.quantity}", modifier = Modifier.padding(8.dp))
+            }
+
+            Row (modifier = Modifier.fillMaxWidth()) {
+                Icon(imageVector = Icons.Default.LocationOn, contentDescription = null)
+                Text(text = item.address)
+            }
+        }
+
         Text(text = item.name, modifier = Modifier.padding(8.dp))
         Text(text = "Qt: ${item.quantity}", modifier = Modifier.padding(8.dp))
         Row (
